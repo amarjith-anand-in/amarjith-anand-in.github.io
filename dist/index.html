@@ -9,24 +9,39 @@
     <meta property="og:description" content="Personal Study Tracker for Me - Minimalist Theory & Lab Exam Planner for MCA semester exam preparation with Google Sheets and Firestore sync." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <script type="module" crossorigin src="./assets/index-Y5jUuf-E.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CYHE3RJn.css">
+    <script type="module" crossorigin src="./assets/index-HJAPyvMV.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DBv2yr9-.css">
   </head>
   <body class="bg-[#0B0B0B] text-white">
     <div id="root"></div>
     <script>
-      // Fallback for static servers like GitHub Pages where /src/main.js cannot be loaded unbundled
-      window.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => {
-          if (!window.StudyPlannerLoaded) {
+      // Seamless loader for static hosts like GitHub Pages where /src/main.js cannot be loaded unbundled
+      (function() {
+        function mountProductionBundle() {
+          if (!window.StudyPlannerLoaded && !window.__bundleMounted) {
+            window.__bundleMounted = true;
             const script = document.createElement('script');
             script.type = 'module';
             script.crossOrigin = 'anonymous';
-            script.src = './assets/index-Cl6pNRBn.js';
+            script.src = './assets/index-Y5jUuf-E.js';
             document.body.appendChild(script);
           }
-        }, 150);
-      });
+        }
+
+        // On GitHub Pages or static hosts outside local dev, trigger production bundle
+        if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', mountProductionBundle);
+          } else {
+            mountProductionBundle();
+          }
+        } else {
+          // Safety fallback for dev environment if /src/main.js takes longer
+          window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(mountProductionBundle, 300);
+          });
+        }
+      })();
     </script>
   </body>
 </html>
