@@ -2,6 +2,7 @@ import './index.css';
 import { store } from './store.js';
 import { renderNavbar } from './components/Navbar.js';
 import { renderDashboardView } from './components/DashboardView.js';
+import { renderCalendarView } from './components/CalendarView.js';
 import { renderTheoryPlannerView } from './components/TheoryPlannerView.js';
 import { renderLabPlannerView } from './components/LabPlannerView.js';
 import { renderExcelView } from './components/ExcelView.js';
@@ -12,6 +13,9 @@ import {
   openLabModal,
   openNightPYQModal,
 } from './components/Modals.js';
+import { openBadgesModal } from './components/BadgesModal.js';
+import { openTaskModal } from './components/TaskModal.js';
+import { openAuthModal } from './components/AuthModal.js';
 
 const root = document.getElementById('root');
 
@@ -45,6 +49,14 @@ const actions = {
   toggleScheduleItem: (date, itemId) => store.toggleScheduleItem(date, itemId),
   resetDaySchedule: (date) => store.resetDaySchedule(date),
 
+  // Custom Tasks
+  addCustomTask: (task) => store.addCustomTask(task),
+  updateCustomTask: (id, updates) => store.updateCustomTask(id, updates),
+  deleteCustomTask: (id) => store.deleteCustomTask(id),
+  toggleCustomTask: (id) => store.toggleCustomTask(id),
+  seedRecommendedSchedule: (date) => store.seedRecommendedSchedule(date),
+  clearDayTasks: (date) => store.clearDayTasks(date),
+
   addTheoryTopic: (topic) => store.addTheoryTopic(topic),
   updateTheoryTopic: (id, updates) => store.updateTheoryTopic(id, updates),
   deleteTheoryTopic: (id) => store.deleteTheoryTopic(id),
@@ -59,14 +71,18 @@ const actions = {
   exportToExcel: (filename) => store.exportToExcel(filename),
   importFromExcelFile: (file) => store.importFromExcelFile(file),
 
-  syncWithSheets: () => store.syncWithSheets(),
-  signInWithGoogle: () => store.signInWithGoogle(),
+  saveToFirestore: () => store.saveToFirestore(),
   signOutUser: () => store.signOutUser(),
-  setCustomSpreadsheetId: (idOrUrl) => store.setCustomSpreadsheetId(idOrUrl),
 
   showConfirmDialog: (config) => store.showConfirmDialog(config),
   closeConfirmDialog: () => store.closeConfirmDialog(),
 
+  openAddTaskModal: (task = null, defaultDate = null) => {
+    openTaskModal(modalContainer, task, defaultDate, actions);
+  },
+  openAuthModal: (defaultTab = 'login') => {
+    openAuthModal(modalContainer, defaultTab);
+  },
   openAddTheoryModal: (topic = null, defaultDate = null) => {
     openTheoryModal(modalContainer, topic, defaultDate, actions);
   },
@@ -75,6 +91,9 @@ const actions = {
   },
   openNightPYQModal: () => {
     openNightPYQModal(modalContainer, actions);
+  },
+  openBadgesModal: () => {
+    openBadgesModal(modalContainer, store.getState());
   },
 };
 
@@ -86,13 +105,18 @@ function renderApp() {
     navbarContainer,
     state,
     (tab) => store.setActiveTab(tab),
-    () => store.syncWithSheets(),
-    () => store.exportToExcel()
+    () => actions.openAuthModal('login'),
+    () => store.exportToExcel(),
+    () => openBadgesModal(modalContainer, state),
+    () => actions.openAddTaskModal(null, state.selectedDate),
+    () => store.signOutUser()
   );
 
   // 2. Main View
   if (state.activeTab === 'dashboard') {
     renderDashboardView(mainContent, state, actions);
+  } else if (state.activeTab === 'calendar') {
+    renderCalendarView(mainContent, state, actions);
   } else if (state.activeTab === 'theory') {
     renderTheoryPlannerView(mainContent, state, actions);
   } else if (state.activeTab === 'lab') {
@@ -115,4 +139,3 @@ window.StudyPlannerLoaded = true;
 store.subscribe(() => {
   renderApp();
 });
-

@@ -3,8 +3,17 @@ import { getCurrentTimeKolkata } from '../utils/dateUtils.js';
 
 let clockInterval = null;
 
-export function renderNavbar(container, state, onNavigate, onSync, onExportExcel, onOpenBadges) {
-  const { activeTab, activePhase, syncState, gamification } = state;
+export function renderNavbar(
+  container,
+  state,
+  onNavigate,
+  onOpenAuth,
+  onExportExcel,
+  onOpenBadges,
+  onAddTask,
+  onSignOut
+) {
+  const { activeTab, activePhase, syncState, gamification, user } = state;
   const currentTime = getCurrentTimeKolkata();
 
   const navItems = [
@@ -19,29 +28,31 @@ export function renderNavbar(container, state, onNavigate, onSync, onExportExcel
   let syncPillHtml = '';
   if (syncState.syncStatus === 'syncing') {
     syncPillHtml = `
-      <span class="inline-flex items-center gap-1.5 animate-pulse text-white">
-        ${icon('refreshCw', 'w-3.5 h-3.5 animate-spin text-white')}
-        <span class="hidden sm:inline">Syncing...</span>
+      <span class="inline-flex items-center gap-1.5 text-white animate-pulse">
+        ${icon('refreshCw', 'w-3 h-3 animate-spin text-amber-300')}
+        <span class="hidden sm:inline text-xs font-mono">Syncing...</span>
       </span>`;
   } else if (syncState.syncStatus === 'error') {
     syncPillHtml = `
-      <span class="inline-flex items-center gap-1.5 text-neutral-300">
-        ${icon('alertCircle', 'w-3.5 h-3.5 text-neutral-300')}
-        <span class="hidden sm:inline">Sync Issue</span>
+      <span class="inline-flex items-center gap-1.5 text-rose-300">
+        ${icon('alertCircle', 'w-3 h-3 text-rose-400')}
+        <span class="hidden sm:inline text-xs font-mono">Sync Issue</span>
       </span>`;
   } else if (syncState.isConnected) {
     syncPillHtml = `
-      <span class="inline-flex items-center gap-1.5 text-white">
-        ${icon('checkCircle2', 'w-3.5 h-3.5 text-white')}
-        <span class="hidden sm:inline">Sheets Synced</span>
+      <span class="inline-flex items-center gap-1.5 text-emerald-400">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="hidden sm:inline text-xs font-mono">Firestore</span>
       </span>`;
   } else {
     syncPillHtml = `
-      <span class="inline-flex items-center gap-1.5 text-neutral-400">
-        ${icon('refreshCw', 'w-3.5 h-3.5 text-neutral-500')}
-        <span class="hidden sm:inline">Connect Sheets</span>
+      <span class="inline-flex items-center gap-1.5 text-neutral-300">
+        ${icon('user', 'w-3.5 h-3.5 text-neutral-400')}
+        <span class="text-xs font-mono font-medium">Sign In</span>
       </span>`;
   }
+
+  const userDisplayName = user?.displayName || user?.email?.split('@')[0] || '';
 
   container.innerHTML = `
     <!-- Top Header -->
@@ -53,7 +64,7 @@ export function renderNavbar(container, state, onNavigate, onSync, onExportExcel
             <div class="flex items-center gap-2 cursor-pointer" id="nav-brand-btn">
               <div class="w-2.5 h-2.5 rounded-full bg-white animate-pulse"></div>
               <span class="font-bold text-sm tracking-wider uppercase text-white font-mono">
-                MCA STUDY TRACKER
+                STUDY TRACKER
               </span>
             </div>
 
@@ -91,8 +102,18 @@ export function renderNavbar(container, state, onNavigate, onSync, onExportExcel
               .join('')}
           </nav>
 
-          <!-- Right: Streak & XP Badge, Clock, Quick Excel Export & Sheets Sync -->
+          <!-- Right: Action Buttons, Badges, Auth & Sync -->
           <div class="flex items-center gap-2 shrink-0">
+            <!-- Quick Add Task Button -->
+            <button
+              id="nav-quick-add-task-btn"
+              title="Add a custom study task to your schedule"
+              class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-semibold text-black bg-white hover:bg-neutral-200 rounded transition-colors cursor-pointer shadow-sm"
+            >
+              ${icon('plus', 'w-3.5 h-3.5')}
+              <span class="hidden sm:inline">Add Task</span>
+            </button>
+
             <!-- Gamification Streak & XP Badge -->
             ${
               gamification
@@ -129,33 +150,69 @@ export function renderNavbar(container, state, onNavigate, onSync, onExportExcel
             </button>
 
             <!-- Live Asia/Kolkata Clock -->
-            <div class="hidden lg:flex items-center gap-1.5 text-xs font-mono text-neutral-400 bg-neutral-900/60 px-2 py-1 rounded border border-neutral-800">
+            <div class="hidden 2xl:flex items-center gap-1.5 text-xs font-mono text-neutral-400 bg-neutral-900/60 px-2 py-1 rounded border border-neutral-800">
               ${icon('clock', 'w-3.5 h-3.5 text-neutral-400')}
               <span id="live-ist-clock">${currentTime} IST</span>
             </div>
 
-            <!-- Sheets Sync Pill / Button -->
-            <button
-              id="nav-sync-btn"
-              title="${
-                syncState.syncStatus === 'error'
-                  ? syncState.errorMessage || 'Click to retry sync'
-                  : syncState.isConnected
-                  ? `Synced to Google Sheets (${syncState.lastSyncedAt || 'Ready'})`
-                  : 'Click to connect Google Sheets backend'
-              }"
-              class="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono border transition-all cursor-pointer ${
-                syncState.syncStatus === 'syncing'
-                  ? 'bg-neutral-900 text-neutral-200 border-neutral-700'
-                  : syncState.syncStatus === 'error'
-                  ? 'bg-neutral-900 text-neutral-200 border-neutral-700 hover:border-neutral-500'
-                  : syncState.isConnected
-                  ? 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-700'
-                  : 'bg-neutral-950 text-neutral-400 border-neutral-800 hover:border-neutral-700'
-              }"
-            >
-              ${syncPillHtml}
-            </button>
+            <!-- Firestore Auth / Sync Pill Button -->
+            <div class="relative inline-block text-left" id="nav-auth-wrapper">
+              <button
+                id="nav-auth-btn"
+                title="${
+                  user
+                    ? `Signed in as ${user.email} (Firestore Synced)`
+                    : 'Sign In or Register to sync study schedule to Firestore'
+                }"
+                class="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono border transition-all cursor-pointer ${
+                  user
+                    ? 'bg-neutral-900 text-neutral-200 border-neutral-700 hover:border-neutral-500'
+                    : 'bg-neutral-900/90 text-white border-neutral-700 hover:bg-neutral-800'
+                }"
+              >
+                ${syncPillHtml}
+                ${
+                  userDisplayName
+                    ? `<span class="hidden sm:inline text-neutral-200 truncate max-w-[90px]">${userDisplayName}</span>`
+                    : ''
+                }
+              </button>
+
+              <!-- Dropdown for signed-in user -->
+              ${
+                user
+                  ? `
+                <div
+                  id="nav-user-dropdown"
+                  class="hidden absolute right-0 mt-1.5 w-56 rounded-lg bg-[#141414] border border-neutral-800 shadow-xl py-1 text-xs font-mono z-50 animate-in fade-in duration-100"
+                >
+                  <div class="px-3 py-2 border-b border-neutral-800">
+                    <div class="text-neutral-400 text-[10px] uppercase">Logged in as</div>
+                    <div class="text-white font-semibold truncate">${user.email}</div>
+                    <div class="text-emerald-400 text-[10px] mt-0.5 flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                      Firestore Cloud Synced
+                    </div>
+                  </div>
+                  <button
+                    id="nav-dropdown-settings"
+                    class="w-full text-left px-3 py-2 text-neutral-300 hover:text-white hover:bg-neutral-900 flex items-center gap-2 cursor-pointer"
+                  >
+                    ${icon('settings', 'w-3.5 h-3.5')}
+                    <span>Account & Settings</span>
+                  </button>
+                  <button
+                    id="nav-dropdown-signout"
+                    class="w-full text-left px-3 py-2 text-rose-400 hover:text-rose-300 hover:bg-rose-950/30 flex items-center gap-2 cursor-pointer border-t border-neutral-800"
+                  >
+                    ${icon('logOut', 'w-3.5 h-3.5')}
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              `
+                  : ''
+              }
+            </div>
           </div>
         </div>
       </div>
@@ -208,14 +265,55 @@ export function renderNavbar(container, state, onNavigate, onSync, onExportExcel
     brandBtn.addEventListener('click', () => onNavigate('dashboard'));
   }
 
-  const syncBtn = container.querySelector('#nav-sync-btn');
-  if (syncBtn) {
-    syncBtn.addEventListener('click', () => onSync());
+  const quickAddTaskBtn = container.querySelector('#nav-quick-add-task-btn');
+  if (quickAddTaskBtn) {
+    quickAddTaskBtn.addEventListener('click', () => onAddTask && onAddTask());
   }
 
   const quickExcelBtn = container.querySelector('#nav-quick-excel-btn');
   if (quickExcelBtn) {
     quickExcelBtn.addEventListener('click', () => onExportExcel && onExportExcel());
+  }
+
+  const authBtn = container.querySelector('#nav-auth-btn');
+  const userDropdown = container.querySelector('#nav-user-dropdown');
+
+  if (authBtn) {
+    authBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (user) {
+        if (userDropdown) {
+          userDropdown.classList.toggle('hidden');
+        }
+      } else {
+        onOpenAuth && onOpenAuth();
+      }
+    });
+  }
+
+  // Close dropdown on outside click
+  if (userDropdown) {
+    document.addEventListener('click', () => {
+      if (!userDropdown.classList.contains('hidden')) {
+        userDropdown.classList.add('hidden');
+      }
+    });
+  }
+
+  const dropdownSettings = container.querySelector('#nav-dropdown-settings');
+  if (dropdownSettings) {
+    dropdownSettings.addEventListener('click', () => {
+      onNavigate('settings');
+      userDropdown?.classList.add('hidden');
+    });
+  }
+
+  const dropdownSignOut = container.querySelector('#nav-dropdown-signout');
+  if (dropdownSignOut) {
+    dropdownSignOut.addEventListener('click', () => {
+      onSignOut && onSignOut();
+      userDropdown?.classList.add('hidden');
+    });
   }
 
   // Clock tick

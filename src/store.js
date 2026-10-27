@@ -9,24 +9,22 @@ import {
   resolveActivePhase,
 } from './utils/dateUtils.js';
 import {
-  initAuth,
-  googleSignIn,
-  logout,
-  getAccessToken,
-} from './services/firebaseAuth.js';
+  subscribeToAuth,
+  loginWithEmail,
+  registerWithEmail,
+  loginWithGoogle,
+  logoutUser,
+} from './services/authService.js';
 import {
-  DEFAULT_SPREADSHEET_ID,
-  DEFAULT_SPREADSHEET_URL,
-  readWorkbookData,
-  writeWorkbookData,
-  extractSpreadsheetId,
-} from './services/googleSheets.js';
+  fetchUserTrackerData,
+  saveUserTrackerData,
+  subscribeToUserTrackerData,
+} from './services/firestoreService.js';
 import { exportToExcel, importFromExcel } from './services/excelService.js';
 import { calculateGamification } from './services/gamificationService.js';
 import { showToast } from './utils/toast.js';
 
-const LOCAL_STORAGE_KEY = 'mca_study_planner_state_v1';
-
+const LOCAL_STORAGE_KEY = 'mca_study_planner_state_v2';
 
 export const INITIAL_EXAM_DATES = {
   studyLeaveStart: '2026-10-29',
@@ -90,15 +88,16 @@ class StudyStore {
       selectedDate: getTodayKolkata(),
       examDates: JSON.parse(JSON.stringify(INITIAL_EXAM_DATES)),
       toggles: JSON.parse(JSON.stringify(INITIAL_TOGGLES)),
+      customTasks: [],
       theoryTopics: [],
       labTopics: [],
       dailyCompletions: {},
       user: null,
-      syncState: {
+      firestoreSync: {
         isConnected: false,
-        spreadsheetId: DEFAULT_SPREADSHEET_ID,
-        spreadsheetUrl: DEFAULT_SPREADSHEET_URL,
-        syncStatus: 'idle',
+        syncStatus: 'idle', // 'idle' | 'syncing' | 'synced' | 'error'
+        lastSyncedAt: null,
+        errorMessage: null,
       },
       confirmDialog: {
         isOpen: false,
@@ -113,26 +112,25 @@ class StudyStore {
     };
 
     this.listeners = new Set();
-    this.autoSyncTimeout = null;
+    this.firestoreDebounceTimeout = null;
+    this.firestoreUnsubscribe = null;
     this.isLoaded = false;
 
     this.init();
   }
 
   init() {
+    // 1. Restore from localStorage for instantaneous offline rendering
     try {
       const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed.examDates) this.state.examDates = parsed.examDates;
         if (parsed.toggles) this.state.toggles = parsed.toggles;
+        if (Array.isArray(parsed.customTasks)) this.state.customTasks = parsed.customTasks;
         if (Array.isArray(parsed.theoryTopics)) this.state.theoryTopics = parsed.theoryTopics;
         if (Array.isArray(parsed.labTopics)) this.state.labTopics = parsed.labTopics;
         if (parsed.dailyCompletions) this.state.dailyCompletions = parsed.dailyCompletions;
-        if (parsed.spreadsheetId) {
-          this.state.syncState.spreadsheetId = parsed.spreadsheetId;
-          this.state.syncState.spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${parsed.spreadsheetId}/edit`;
-        }
       }
     } catch (e) {
       console.warn('Failed to parse local storage cache:', e);
@@ -140,21 +138,64 @@ class StudyStore {
       this.isLoaded = true;
     }
 
-    // Init Firebase Auth
-    initAuth(
-      (currentUser, token) => {
+    // 2. Subscribe to Firebase Authentication
+    subscribeToAuth(async (currentUser) => {
+      if (currentUser) {
         this.state.user = currentUser;
-        this.state.syncState.isConnected = true;
-        this.state.syncState.userEmail = currentUser.email || undefined;
+        this.state.firestoreSync.isConnected = true;
+        this.state.firestoreSync.userEmail = currentUser.email || currentUser.displayName || 'User';
+
+        // Detach prior firestore listener if any
+        if (this.firestoreUnsubscribe) {
+          this.firestoreUnsubscribe();
+          this.firestoreUnsubscribe = null;
+        }
+
+        // Attach real-time listener to Firestore
+        this.firestoreUnsubscribe = subscribeToUserTrackerData(
+          currentUser.uid,
+          (remoteData) => {
+            if (remoteData) {
+              if (remoteData.examDates) this.state.examDates = remoteData.examDates;
+              if (remoteData.toggles) this.state.toggles = remoteData.toggles;
+              if (Array.isArray(remoteData.customTasks)) this.state.customTasks = remoteData.customTasks;
+              if (Array.isArray(remoteData.theoryTopics)) this.state.theoryTopics = remoteData.theoryTopics;
+              if (Array.isArray(remoteData.labTopics)) this.state.labTopics = remoteData.labTopics;
+              if (remoteData.dailyCompletions) this.state.dailyCompletions = remoteData.dailyCompletions;
+
+              this.state.firestoreSync.syncStatus = 'synced';
+              this.state.firestoreSync.lastSyncedAt = new Date().toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+              this.state.firestoreSync.errorMessage = null;
+              this.notify();
+            } else {
+              // Remote doc does not exist yet -> push initial local state
+              this.saveToFirestore();
+            }
+          },
+          (err) => {
+            console.warn('Firestore sync warning:', err);
+            this.state.firestoreSync.syncStatus = 'error';
+            this.state.firestoreSync.errorMessage = err.message || 'Firestore sync issue';
+            this.notify();
+          }
+        );
+
         this.notify();
-      },
-      () => {
+      } else {
+        if (this.firestoreUnsubscribe) {
+          this.firestoreUnsubscribe();
+          this.firestoreUnsubscribe = null;
+        }
         this.state.user = null;
-        this.state.syncState.isConnected = false;
-        this.state.syncState.userEmail = undefined;
+        this.state.firestoreSync.isConnected = false;
+        this.state.firestoreSync.syncStatus = 'idle';
+        this.state.firestoreSync.errorMessage = null;
         this.notify();
       }
-    );
+    });
   }
 
   saveToLocalStorage() {
@@ -163,15 +204,58 @@ class StudyStore {
       const payload = {
         examDates: this.state.examDates,
         toggles: this.state.toggles,
+        customTasks: this.state.customTasks,
         theoryTopics: this.state.theoryTopics,
         labTopics: this.state.labTopics,
         dailyCompletions: this.state.dailyCompletions,
-        spreadsheetId: this.state.syncState.spreadsheetId,
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payload));
     } catch (e) {
       console.error('Failed to save to localStorage:', e);
     }
+  }
+
+  async saveToFirestore() {
+    if (!this.state.user?.uid) return;
+    this.state.firestoreSync.syncStatus = 'syncing';
+    this.notify();
+
+    try {
+      await saveUserTrackerData(this.state.user.uid, {
+        examDates: this.state.examDates,
+        toggles: this.state.toggles,
+        customTasks: this.state.customTasks,
+        theoryTopics: this.state.theoryTopics,
+        labTopics: this.state.labTopics,
+        dailyCompletions: this.state.dailyCompletions,
+      });
+
+      this.state.firestoreSync.syncStatus = 'synced';
+      this.state.firestoreSync.lastSyncedAt = new Date().toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      this.state.firestoreSync.errorMessage = null;
+    } catch (err) {
+      console.error('Failed saving to Firestore:', err);
+      this.state.firestoreSync.syncStatus = 'error';
+      this.state.firestoreSync.errorMessage = err.message || 'Sync error';
+    }
+    this.notify();
+  }
+
+  triggerAutoSync() {
+    this.saveToLocalStorage();
+
+    if (!this.state.user?.uid) return;
+
+    if (this.firestoreDebounceTimeout) {
+      clearTimeout(this.firestoreDebounceTimeout);
+    }
+
+    this.firestoreDebounceTimeout = setTimeout(() => {
+      this.saveToFirestore();
+    }, 700);
   }
 
   subscribe(listener) {
@@ -189,6 +273,8 @@ class StudyStore {
   getState() {
     const { state } = this;
     const activePhase = resolveActivePhase(state.toggles, state.examDates, state.selectedDate);
+
+    // Active preset schedule (used for reference / templates)
     const activeSchedule =
       activePhase.phase === 'theory-only'
         ? THEORY_ONLY_SCHEDULE
@@ -196,13 +282,23 @@ class StudyStore {
         ? LAB_SPRINT_SCHEDULE
         : PRE_LAB_SCHEDULE;
 
-    const todayRecord = state.dailyCompletions[state.selectedDate]?.completedScheduleIds || [];
-    const scheduleCompleted = todayRecord.filter((id) => activeSchedule.some((s) => s.id === id)).length;
-    const scheduleTotal = activeSchedule.length;
+    // Filter user tasks for the currently selected date
+    const todayCustomTasks = (state.customTasks || []).filter(
+      (task) => task.date === state.selectedDate
+    );
+
+    const completedScheduleIds = state.dailyCompletions[state.selectedDate]?.completedScheduleIds || [];
+    const completedCustomTasksCount = todayCustomTasks.filter((t) => t.isCompleted).length;
+
+    // Total tasks for selected day: custom tasks take primary priority
+    const totalDayTasks = todayCustomTasks.length;
+    const completedDayTasks = completedCustomTasksCount;
+
     const dailyScheduleProgress = {
-      completed: scheduleCompleted,
-      total: scheduleTotal,
-      percentage: scheduleTotal > 0 ? Math.round((scheduleCompleted / scheduleTotal) * 100) : 0,
+      completed: completedDayTasks,
+      total: totalDayTasks,
+      percentage: totalDayTasks > 0 ? Math.round((completedDayTasks / totalDayTasks) * 100) : 0,
+      completedScheduleIds,
     };
 
     const theoryCompleted = state.theoryTopics.filter((t) => t.status === 'Done').length;
@@ -243,11 +339,19 @@ class StudyStore {
       ...state,
       activePhase,
       activeSchedule,
+      todayCustomTasks,
       dailyScheduleProgress,
       theoryProgress,
       madLabProgress,
       dsLabProgress,
       gamification,
+      syncState: {
+        isConnected: state.firestoreSync.isConnected,
+        syncStatus: state.firestoreSync.syncStatus,
+        lastSyncedAt: state.firestoreSync.lastSyncedAt,
+        errorMessage: state.firestoreSync.errorMessage,
+        userEmail: state.firestoreSync.userEmail,
+      },
     };
   }
 
@@ -260,6 +364,208 @@ class StudyStore {
     this.state.selectedDate = date;
     this.notify();
   }
+
+  // --- Dynamic Custom Task Methods ---
+
+  addCustomTask(task) {
+    const newTask = {
+      id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      title: task.title,
+      subject: task.subject || 'General Study',
+      date: task.date || this.state.selectedDate,
+      timeSlot: task.timeSlot || 'Flexible / All Day',
+      category: task.category || 'theory',
+      priority: task.priority || 'Medium',
+      isCompleted: Boolean(task.isCompleted),
+      notes: task.notes || '',
+      createdAt: new Date().toISOString(),
+    };
+    this.state.customTasks.push(newTask);
+    showToast(`Task "<b>${newTask.title}</b>" added to schedule!`, 'success');
+    this.triggerAutoSync();
+    this.notify();
+  }
+
+  updateCustomTask(id, updates) {
+    let newlyDone = false;
+    let isEarly = false;
+
+    this.state.customTasks = this.state.customTasks.map((task) => {
+      if (task.id === id) {
+        const isDone = updates.isCompleted !== undefined ? updates.isCompleted : task.isCompleted;
+        if (isDone && !task.isCompleted) {
+          newlyDone = true;
+          const todayStr = getTodayKolkata();
+          if (task.date && todayStr <= task.date) isEarly = true;
+        }
+        return {
+          ...task,
+          ...updates,
+          completedAt: isDone ? task.completedAt || new Date().toISOString() : undefined,
+        };
+      }
+      return task;
+    });
+
+    if (newlyDone) {
+      if (isEarly) {
+        showToast(
+          '<span class="font-bold text-amber-400 font-mono">+60 XP!</span> Task completed with <span class="text-amber-300 font-semibold">+20 Early Bonus 🎯</span>',
+          'bonus'
+        );
+      } else {
+        showToast('<span class="font-bold text-emerald-400 font-mono">+40 XP</span> Task completed! 🔥', 'xp');
+      }
+    }
+
+    this.triggerAutoSync();
+    this.notify();
+  }
+
+  toggleCustomTask(id) {
+    const task = this.state.customTasks.find((t) => t.id === id);
+    if (!task) return;
+    this.updateCustomTask(id, { isCompleted: !task.isCompleted });
+  }
+
+  deleteCustomTask(id) {
+    const task = this.state.customTasks.find((t) => t.id === id);
+    this.state.customTasks = this.state.customTasks.filter((t) => t.id !== id);
+    if (task) {
+      showToast(`Task "<b>${task.title}</b>" deleted.`, 'info');
+    }
+    this.triggerAutoSync();
+    this.notify();
+  }
+
+  /**
+   * Seed a set of recommended timetable tasks for a specific date
+   * so users aren't faced with an empty screen if they want a starting plan
+   */
+  seedRecommendedSchedule(targetDate = null) {
+    const date = targetDate || this.state.selectedDate;
+    const defaultBlocks = [
+      {
+        title: 'Morning Routine & Mindset',
+        timeSlot: '06:00–07:00 AM',
+        category: 'break',
+        priority: 'Low',
+        subject: 'General Study / Practice',
+      },
+      {
+        title: 'Deep Focus: Theory & PYQ Analysis',
+        timeSlot: '07:00–09:00 AM',
+        category: 'theory',
+        priority: 'High',
+        subject: 'Data Science and Machine Learning',
+      },
+      {
+        title: 'Breakfast & Energy Break',
+        timeSlot: '09:00–10:00 AM',
+        category: 'break',
+        priority: 'Low',
+        subject: 'General Study / Practice',
+      },
+      {
+        title: 'Algorithms & Problem Solving Session',
+        timeSlot: '10:00 AM–12:00 PM',
+        category: 'theory',
+        priority: 'High',
+        subject: 'Design and Analysis of Algorithms (DAA)',
+      },
+      {
+        title: 'Lunch & Power Nap',
+        timeSlot: '12:00–01:30 PM',
+        category: 'break',
+        priority: 'Low',
+        subject: 'General Study / Practice',
+      },
+      {
+        title: 'Lab Practical & Program Execution',
+        timeSlot: '01:30–03:30 PM',
+        category: 'lab',
+        priority: 'High',
+        subject: 'Mobile Application Development (MAD) Lab',
+      },
+      {
+        title: 'Active Recall & Topic Revision',
+        timeSlot: '04:00–06:00 PM',
+        category: 'revision',
+        priority: 'Medium',
+        subject: 'Operations Research (OR)',
+      },
+      {
+        title: 'Night PYQ Analysis & Next-Day Planning',
+        timeSlot: '09:30–10:30 PM',
+        category: 'pyq',
+        priority: 'High',
+        subject: 'Deep Learning',
+      },
+    ];
+
+    const newTasks = defaultBlocks.map((b) => ({
+      id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      title: b.title,
+      subject: b.subject,
+      date,
+      timeSlot: b.timeSlot,
+      category: b.category,
+      priority: b.priority,
+      isCompleted: false,
+      notes: 'Generated from recommended MCA study timetable template',
+      createdAt: new Date().toISOString(),
+    }));
+
+    this.state.customTasks.push(...newTasks);
+    showToast(`Seeded ${newTasks.length} study tasks for <b>${date}</b>!`, 'success');
+    this.triggerAutoSync();
+    this.notify();
+  }
+
+  clearDayTasks(targetDate = null) {
+    const date = targetDate || this.state.selectedDate;
+    const initialCount = this.state.customTasks.length;
+    this.state.customTasks = this.state.customTasks.filter((t) => t.date !== date);
+    const removedCount = initialCount - this.state.customTasks.length;
+    showToast(`Cleared ${removedCount} tasks for ${date}.`, 'info');
+    this.triggerAutoSync();
+    this.notify();
+  }
+
+  // --- Legacy Presets & Completions Compatibility ---
+
+  toggleScheduleItem(date, itemId) {
+    const existing = this.state.dailyCompletions[date]?.completedScheduleIds || [];
+    const isAdding = !existing.includes(itemId);
+    const updatedIds = isAdding
+      ? [...existing, itemId]
+      : existing.filter((id) => id !== itemId);
+
+    this.state.dailyCompletions[date] = {
+      date,
+      completedScheduleIds: updatedIds,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    if (isAdding) {
+      showToast('<span class="font-bold text-amber-400 font-mono">+15 XP</span> Schedule block completed! 🔥', 'xp');
+    }
+
+    this.triggerAutoSync();
+    this.notify();
+  }
+
+  resetDaySchedule(date) {
+    this.state.dailyCompletions[date] = {
+      date,
+      completedScheduleIds: [],
+      lastUpdated: new Date().toISOString(),
+    };
+    this.triggerAutoSync();
+    this.notify();
+  }
+
+  // --- Theory & Lab Topic Trackers ---
 
   setToggles(updates) {
     this.state.toggles = { ...this.state.toggles, ...updates };
@@ -290,37 +596,6 @@ class StudyStore {
     this.state.examDates.labExams[labKey] = {
       ...targetLab,
       isCompleted: completed,
-    };
-    this.triggerAutoSync();
-    this.notify();
-  }
-
-  toggleScheduleItem(date, itemId) {
-    const existing = this.state.dailyCompletions[date]?.completedScheduleIds || [];
-    const isAdding = !existing.includes(itemId);
-    const updatedIds = isAdding
-      ? [...existing, itemId]
-      : existing.filter((id) => id !== itemId);
-
-    this.state.dailyCompletions[date] = {
-      date,
-      completedScheduleIds: updatedIds,
-      lastUpdated: new Date().toISOString(),
-    };
-
-    if (isAdding) {
-      showToast('<span class="font-bold text-amber-400 font-mono">+15 XP</span> Daily task block completed! 🔥', 'xp');
-    }
-
-    this.triggerAutoSync();
-    this.notify();
-  }
-
-  resetDaySchedule(date) {
-    this.state.dailyCompletions[date] = {
-      date,
-      completedScheduleIds: [],
-      lastUpdated: new Date().toISOString(),
     };
     this.triggerAutoSync();
     this.notify();
@@ -362,7 +637,10 @@ class StudyStore {
 
     if (newlyDone) {
       if (isEarly) {
-        showToast('<span class="font-bold text-emerald-400 font-mono">+75 XP!</span> Theory topic completed with <span class="text-amber-300 font-semibold">+25 Early Bonus 🎯</span>', 'bonus');
+        showToast(
+          '<span class="font-bold text-emerald-400 font-mono">+75 XP!</span> Theory topic completed with <span class="text-amber-300 font-semibold">+25 Early Bonus 🎯</span>',
+          'bonus'
+        );
       } else {
         showToast('<span class="font-bold text-emerald-400 font-mono">+50 XP</span> Theory topic completed! 📚', 'xp');
       }
@@ -436,7 +714,10 @@ class StudyStore {
 
     if (newlyDone) {
       if (isEarly) {
-        showToast('<span class="font-bold text-cyan-400 font-mono">+60 XP!</span> Lab exercise completed with <span class="text-amber-300 font-semibold">+20 Early Bonus 🎯</span>', 'bonus');
+        showToast(
+          '<span class="font-bold text-cyan-400 font-mono">+60 XP!</span> Lab exercise completed with <span class="text-amber-300 font-semibold">+20 Early Bonus 🎯</span>',
+          'bonus'
+        );
       } else {
         showToast('<span class="font-bold text-cyan-400 font-mono">+40 XP</span> Lab exercise completed! 🔬', 'xp');
       }
@@ -458,143 +739,30 @@ class StudyStore {
     this.notify();
   }
 
-  setCustomSpreadsheetId(idOrUrl) {
-    const cleanId = extractSpreadsheetId(idOrUrl);
-    this.state.syncState.spreadsheetId = cleanId;
-    this.state.syncState.spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${cleanId}/edit`;
-    this.state.syncState.syncStatus = 'idle';
-    this.state.syncState.errorMessage = undefined;
-    this.notify();
+  // --- Auth Actions ---
+
+  async register(email, password, displayName) {
+    return await registerWithEmail(email, password, displayName);
   }
 
-  async triggerAutoSync() {
-    const token = await getAccessToken();
-    if (!token) return;
-
-    if (this.autoSyncTimeout) {
-      clearTimeout(this.autoSyncTimeout);
-    }
-
-    this.autoSyncTimeout = setTimeout(async () => {
-      this.state.syncState.syncStatus = 'syncing';
-      this.state.syncState.errorMessage = undefined;
-      this.notify();
-
-      try {
-        await writeWorkbookData(this.state.syncState.spreadsheetId, token, {
-          examDates: this.state.examDates,
-          toggles: this.state.toggles,
-          theoryTopics: this.state.theoryTopics,
-          labTopics: this.state.labTopics,
-          dailyCompletions: this.state.dailyCompletions,
-        });
-        this.state.syncState.syncStatus = 'success';
-        this.state.syncState.lastSyncedAt = new Date().toLocaleTimeString('en-US', {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        this.state.syncState.errorMessage = undefined;
-      } catch (err) {
-        console.error('Auto-sync failed:', err);
-        this.state.syncState.syncStatus = 'error';
-        this.state.syncState.errorMessage = err.message || 'Sync failed';
-      }
-      this.notify();
-    }, 1500);
-  }
-
-  async syncWithSheets() {
-    let token = await getAccessToken();
-    if (!token) {
-      try {
-        const result = await googleSignIn();
-        if (result) {
-          token = result.accessToken;
-          this.state.user = result.user;
-          this.state.syncState.isConnected = true;
-          this.state.syncState.userEmail = result.user.email || undefined;
-          this.notify();
-        } else {
-          return;
-        }
-      } catch (err) {
-        this.state.syncState.syncStatus = 'error';
-        this.state.syncState.errorMessage = err.message || 'Sign-in failed';
-        this.notify();
-        return;
-      }
-    }
-
-    if (!token) return;
-
-    this.state.syncState.syncStatus = 'syncing';
-    this.state.syncState.errorMessage = undefined;
-    this.notify();
-
-    try {
-      const remote = await readWorkbookData(this.state.syncState.spreadsheetId, token);
-
-      if (remote.examDates) this.state.examDates = remote.examDates;
-      if (remote.toggles) this.state.toggles = remote.toggles;
-      if (remote.theoryTopics && remote.theoryTopics.length > 0) {
-        this.state.theoryTopics = remote.theoryTopics;
-      }
-      if (remote.labTopics && remote.labTopics.length > 0) {
-        this.state.labTopics = remote.labTopics;
-      }
-      if (remote.dailyCompletions && Object.keys(remote.dailyCompletions).length > 0) {
-        this.state.dailyCompletions = remote.dailyCompletions;
-      }
-
-      if (!remote.theoryTopics && !remote.examDates) {
-        await writeWorkbookData(this.state.syncState.spreadsheetId, token, {
-          examDates: this.state.examDates,
-          toggles: this.state.toggles,
-          theoryTopics: this.state.theoryTopics,
-          labTopics: this.state.labTopics,
-          dailyCompletions: this.state.dailyCompletions,
-        });
-      }
-
-      this.state.syncState.syncStatus = 'success';
-      this.state.syncState.lastSyncedAt = new Date().toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      this.state.syncState.errorMessage = undefined;
-    } catch (err) {
-      console.error('Sync failed:', err);
-      this.state.syncState.syncStatus = 'error';
-      this.state.syncState.errorMessage = err.message || 'Failed to connect to Google Sheets';
-    }
-    this.notify();
+  async login(email, password) {
+    return await loginWithEmail(email, password);
   }
 
   async signInWithGoogle() {
-    try {
-      const res = await googleSignIn();
-      if (res) {
-        this.state.user = res.user;
-        this.state.syncState.isConnected = true;
-        this.state.syncState.userEmail = res.user.email || undefined;
-        this.notify();
-        setTimeout(() => this.syncWithSheets(), 100);
-      }
-    } catch (err) {
-      this.state.syncState.syncStatus = 'error';
-      this.state.syncState.errorMessage = err.message || 'Sign in failed';
-      this.notify();
-    }
+    return await loginWithGoogle();
   }
 
   async signOutUser() {
-    await logout();
+    await logoutUser();
     this.state.user = null;
-    this.state.syncState.isConnected = false;
-    this.state.syncState.userEmail = undefined;
-    this.state.syncState.syncStatus = 'idle';
+    this.state.firestoreSync.isConnected = false;
+    this.state.firestoreSync.syncStatus = 'idle';
+    showToast('Signed out successfully.', 'info');
     this.notify();
   }
+
+  // --- Excel Import / Export ---
 
   exportToExcel(filename = null) {
     exportToExcel(this.getState(), filename);
@@ -611,12 +779,18 @@ class StudyStore {
 
       this.triggerAutoSync();
       this.notify();
-      return { success: true, countTheory: (parsed.theoryTopics || []).length, countLab: (parsed.labTopics || []).length };
+      return {
+        success: true,
+        countTheory: (parsed.theoryTopics || []).length,
+        countLab: (parsed.labTopics || []).length,
+      };
     } catch (err) {
       console.error('Import error:', err);
       throw err;
     }
   }
+
+  // --- Confirm Dialog ---
 
   showConfirmDialog(config) {
     this.state.confirmDialog = {
@@ -642,4 +816,3 @@ class StudyStore {
 }
 
 export const store = new StudyStore();
-

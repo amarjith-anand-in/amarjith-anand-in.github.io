@@ -256,11 +256,29 @@ export function renderCalendarView(container, state, actions) {
                               : ''
                           }
 
-                          <!-- Planned Topics Pill -->
+                          <!-- Custom Tasks Pill -->
+                          ${
+                            details.customTasks && details.customTasks.length > 0
+                              ? `
+                            <div class="flex items-center gap-1 text-[9px] sm:text-[10px] font-mono text-neutral-300">
+                              <span class="w-1.5 h-1.5 rounded-full ${
+                                details.customTasksDoneCount === details.customTasks.length
+                                  ? 'bg-emerald-400'
+                                  : 'bg-blue-400'
+                              }"></span>
+                              <span class="truncate">
+                                ${details.customTasks.length} Task${details.customTasks.length > 1 ? 's' : ''} (${details.customTasksDoneCount} done)
+                              </span>
+                            </div>
+                          `
+                              : ''
+                          }
+
+                          <!-- Planned Syllabus Topics Pill -->
                           ${
                             details.theoryTopics.length > 0 || details.labTopics.length > 0
                               ? `
-                            <div class="flex items-center gap-1 text-[9px] sm:text-[10px] font-mono text-neutral-300">
+                            <div class="flex items-center gap-1 text-[9px] sm:text-[10px] font-mono text-neutral-400">
                               <span class="w-1.5 h-1.5 rounded-full ${
                                 details.theoryDoneCount + details.labDoneCount ===
                                 details.theoryTopics.length + details.labTopics.length
@@ -268,7 +286,7 @@ export function renderCalendarView(container, state, actions) {
                                   : 'bg-amber-400'
                               }"></span>
                               <span class="truncate">
-                                ${details.theoryTopics.length + details.labTopics.length} Tasks
+                                ${details.theoryTopics.length + details.labTopics.length} Topics
                                 (${details.theoryDoneCount + details.labDoneCount} done)
                               </span>
                             </div>
@@ -488,6 +506,73 @@ export function openCalendarDayModal(dateStr, state, actions) {
               : ''
           }
 
+          <!-- 2.5 Custom Tasks Scheduled for this Date -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-mono uppercase tracking-wider text-neutral-300 flex items-center gap-1.5 font-semibold">
+                ${icon('checkSquare', 'w-3.5 h-3.5 text-amber-300')}
+                <span>Custom Study Tasks (${details.customTasks?.length || 0})</span>
+              </h3>
+              <button
+                id="cal-modal-add-task"
+                class="text-xs font-mono font-medium text-black bg-white hover:bg-neutral-200 px-2 py-0.5 rounded cursor-pointer transition-colors"
+              >
+                + Add Task
+              </button>
+            </div>
+
+            ${
+              !details.customTasks || details.customTasks.length === 0
+                ? `<div class="p-3 bg-[#0B0B0B] border border-neutral-800/80 rounded text-xs text-neutral-500 font-mono flex items-center justify-between">
+                    <span>No custom tasks planned for this date.</span>
+                    <button id="cal-modal-seed-day" class="text-neutral-300 hover:text-white underline text-[11px] cursor-pointer">Seed Plan</button>
+                   </div>`
+                : `
+              <div class="space-y-2">
+                ${details.customTasks
+                  .map((task) => {
+                    const isDone = Boolean(task.isCompleted);
+                    return `
+                    <div class="p-2.5 bg-[#0B0B0B] border border-neutral-800 rounded-md flex items-center justify-between gap-3">
+                      <div class="flex items-center gap-2.5 min-w-0">
+                        <button
+                          data-task-id="${task.id}"
+                          class="cal-toggle-task-btn text-neutral-400 hover:text-white cursor-pointer shrink-0"
+                          title="Toggle Completion (+40 XP)"
+                        >
+                          ${
+                            isDone
+                              ? icon('checkSquare', 'w-4 h-4 text-emerald-400')
+                              : icon('square', 'w-4 h-4')
+                          }
+                        </button>
+                        <div class="min-w-0">
+                          <p class="text-xs font-medium text-white truncate ${
+                            isDone ? 'line-through text-neutral-500' : ''
+                          }">
+                            ${task.title}
+                          </p>
+                          <p class="text-[11px] font-mono text-neutral-500">
+                            ${task.timeSlot || 'Flexible'} &bull; ${task.subject || 'General'}
+                          </p>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-1">
+                        ${
+                          isDone
+                            ? `<span class="px-1.5 py-0.2 rounded text-[9px] font-mono bg-emerald-950/80 text-emerald-400 border border-emerald-800">Done</span>`
+                            : `<span class="px-1.5 py-0.2 rounded text-[9px] font-mono bg-neutral-900 text-neutral-400 border border-neutral-800">${task.priority}</span>`
+                        }
+                      </div>
+                    </div>
+                  `;
+                  })
+                  .join('')}
+              </div>
+            `
+            }
+          </div>
+
           <!-- 3. Theory Topics Scheduled for this Date -->
           <div class="space-y-2">
             <div class="flex items-center justify-between">
@@ -702,6 +787,33 @@ export function openCalendarDayModal(dateStr, state, actions) {
       closeModal();
     });
   }
+
+  // Add custom task for this date
+  const addTaskBtn = modalContainer.querySelector('#cal-modal-add-task');
+  if (addTaskBtn) {
+    addTaskBtn.addEventListener('click', () => {
+      actions.openAddTaskModal(null, dateStr);
+    });
+  }
+
+  // Seed tasks for this date
+  const seedDayBtn = modalContainer.querySelector('#cal-modal-seed-day');
+  if (seedDayBtn) {
+    seedDayBtn.addEventListener('click', () => {
+      actions.seedRecommendedSchedule(dateStr);
+      closeModal();
+    });
+  }
+
+  // Toggle custom task checkboxes
+  modalContainer.querySelectorAll('.cal-toggle-task-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const taskId = btn.getAttribute('data-task-id');
+      if (taskId) {
+        actions.toggleCustomTask(taskId);
+      }
+    });
+  });
 
   // Add theory topic for this date
   const addTheoryBtn = modalContainer.querySelector('#cal-modal-add-theory');

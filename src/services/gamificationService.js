@@ -145,6 +145,19 @@ export function calculateStudyStreak(state) {
     }
   }
 
+  // 4. Custom user tasks completed
+  if (Array.isArray(state.customTasks)) {
+    for (const task of state.customTasks) {
+      if (task.isCompleted) {
+        if (task.completedAt) {
+          activeDates.add(task.completedAt.slice(0, 10));
+        } else if (task.date) {
+          activeDates.add(task.date);
+        }
+      }
+    }
+  }
+
   if (activeDates.size === 0) {
     return {
       currentStreak: 0,
@@ -275,13 +288,32 @@ export function calculateGamification(state) {
     }
   }
 
+  // Custom Tasks XP
+  let customTaskXp = 0;
+  let customTaskEarlyBonusXp = 0;
+  if (Array.isArray(state.customTasks)) {
+    for (const task of state.customTasks) {
+      if (task.isCompleted) {
+        customTaskXp += 40;
+        if (task.date) {
+          const compDate = task.completedAt ? task.completedAt.slice(0, 10) : getTodayKolkata();
+          if (compDate <= task.date) {
+            customTaskEarlyBonusXp += 20;
+          }
+        }
+      }
+    }
+  }
+
   const totalXp =
     theoryXp +
     theoryEarlyBonusXp +
     labXp +
     labEarlyBonusXp +
     scheduleXp +
-    flawlessDayBonusXp;
+    flawlessDayBonusXp +
+    customTaskXp +
+    customTaskEarlyBonusXp;
 
   // Resolve Level
   let currentLevel = LEVELS[0];

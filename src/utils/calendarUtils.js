@@ -202,7 +202,11 @@ export function resolveDateDetails(dateStr, state) {
   const labTopicsOnDate = labTopics.filter((l) => l.targetDate === dateStr);
   const labDoneCount = labTopicsOnDate.filter((l) => l.status === 'Done').length;
 
-  // 6. Daily schedule completed items
+  // 6. Custom tasks on this date
+  const customTasksOnDate = (state.customTasks || []).filter((t) => t.date === dateStr);
+  const customTasksDoneCount = customTasksOnDate.filter((t) => t.isCompleted).length;
+
+  // 7. Daily schedule completed items
   const dayRecord = dailyCompletions[dateStr];
   const completedScheduleIds = dayRecord?.completedScheduleIds || [];
   const scheduleCompletedCount = completedScheduleIds.length;
@@ -217,10 +221,13 @@ export function resolveDateDetails(dateStr, state) {
     theoryDoneCount,
     labTopics: labTopicsOnDate,
     labDoneCount,
+    customTasks: customTasksOnDate,
+    customTasksDoneCount,
     scheduleCompletedCount,
-    isFlawless: scheduleCompletedCount >= 8,
+    isFlawless: scheduleCompletedCount >= 8 || (customTasksOnDate.length > 0 && customTasksDoneCount === customTasksOnDate.length),
     hasActivity:
       scheduleCompletedCount > 0 ||
+      customTasksOnDate.length > 0 ||
       theoryDoneCount > 0 ||
       labDoneCount > 0 ||
       theoryTopicsOnDate.length > 0 ||

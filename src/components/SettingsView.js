@@ -7,7 +7,7 @@ import {
 import { getTodayKolkata } from '../utils/dateUtils.js';
 
 let activeTimetablePresetTab = 'pre-lab';
-let saveSuccessMsg = '';
+let taskFilterSubject = 'all';
 
 export function renderSettingsView(container, state, actions) {
   const {
@@ -16,6 +16,7 @@ export function renderSettingsView(container, state, actions) {
     syncState,
     theoryTopics,
     labTopics,
+    customTasks = [],
     dailyCompletions,
   } = state;
 
@@ -28,172 +29,271 @@ export function renderSettingsView(container, state, actions) {
       ? LAB_SPRINT_SCHEDULE
       : THEORY_ONLY_SCHEDULE;
 
+  const filteredTasks =
+    taskFilterSubject === 'all'
+      ? customTasks
+      : customTasks.filter((t) => t.subject === taskFilterSubject);
+
+  const uniqueSubjects = Array.from(new Set(customTasks.map((t) => t.subject).filter(Boolean)));
+
   container.innerHTML = `
     <div class="space-y-6 pb-20">
       <!-- 1. Header -->
-      <div class="bg-[#151515] border border-neutral-800 rounded-lg p-5 sm:p-6">
+      <div class="bg-[#151515] border border-neutral-800 rounded-lg p-5 sm:p-6 shadow-sm">
         <div class="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-neutral-400 mb-1">
           ${icon('settings', 'w-3.5 h-3.5 text-neutral-300')}
-          <span>Configuration & Cloud Sync</span>
+          <span>Configuration & Cloud Data</span>
         </div>
         <h1 class="text-xl sm:text-2xl font-bold text-white tracking-tight">
-          Application Settings
+          Settings & Task Manager
         </h1>
         <p class="text-xs sm:text-sm text-neutral-400 mt-1 max-w-2xl leading-relaxed">
-          Manage Google Sheets persistence, configurable exam dates, phase transitions, and daily schedule presets.
+          Manage your Firebase Firestore account, custom study tasks, exam schedule, and Excel data backup.
         </p>
       </div>
 
-      <!-- 2. Google Sheets Backend Integration Card -->
+      <!-- 2. Firebase Firestore Cloud Backend & Account Card -->
       <div class="bg-[#151515] border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4">
         <div class="flex items-center justify-between border-b border-neutral-800 pb-3">
           <div class="flex items-center gap-2.5">
-            ${icon('database', 'w-4 h-4 text-white')}
+            ${icon('database', 'w-4 h-4 text-amber-400')}
             <h2 class="text-sm font-mono uppercase tracking-wider font-semibold text-white">
-              Google Sheets Backend
+              Firebase Firestore Backend & Authentication
             </h2>
           </div>
-          <a
-            href="${syncState.spreadsheetUrl}"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="flex items-center gap-1 text-xs font-mono text-neutral-400 hover:text-white transition-colors"
-          >
-            <span>Open Sheet</span>
-            ${icon('externalLink', 'w-3.5 h-3.5')}
-          </a>
+          <span class="text-[11px] font-mono text-neutral-400">
+            Project: <span class="text-neutral-200">study-tracker-b70c8</span>
+          </span>
         </div>
 
-        <!-- Sync Status Banner -->
-        <div class="p-3.5 bg-[#0B0B0B] border border-neutral-800 rounded flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
-          <div class="flex items-center gap-2.5">
-            ${
-              syncState.syncStatus === 'syncing'
-                ? icon('refreshCw', 'w-4 h-4 animate-spin text-white')
-                : syncState.syncStatus === 'error'
-                ? icon('alertCircle', 'w-4 h-4 text-neutral-300')
-                : syncState.isConnected
-                ? icon('checkCircle2', 'w-4 h-4 text-white')
-                : icon('info', 'w-4 h-4 text-neutral-500')
-            }
-            <div>
-              <span class="text-neutral-400">Connection Status: </span>
-              <span class="text-white font-medium">
-                ${
-                  syncState.syncStatus === 'syncing'
-                    ? 'Saving changes to Google Sheets...'
-                    : syncState.syncStatus === 'error'
-                    ? 'Connection Error'
-                    : syncState.isConnected
-                    ? `Connected (${user?.email || 'Signed in'})`
-                    : 'Local Storage (Sign in to sync)'
-                }
-              </span>
+        <!-- Auth & Sync Status Banner -->
+        <div class="p-4 bg-[#0B0B0B] border border-neutral-800 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs font-mono">
+          <div class="flex items-start sm:items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-neutral-900 border border-neutral-700 flex items-center justify-center shrink-0">
               ${
-                syncState.lastSyncedAt
-                  ? `<span class="text-neutral-500 ml-2">(Last synced at ${syncState.lastSyncedAt})</span>`
-                  : ''
+                user
+                  ? icon('checkCircle2', 'w-4 h-4 text-emerald-400')
+                  : icon('user', 'w-4 h-4 text-neutral-400')
               }
+            </div>
+            <div>
+              <div class="text-white font-medium flex items-center gap-2">
+                <span>${user ? `Signed in: ${user.email}` : 'Running in Local Offline Mode'}</span>
+                ${
+                  user
+                    ? `<span class="px-1.5 py-0.2 rounded text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-800">CLOUD SYNCED</span>`
+                    : `<span class="px-1.5 py-0.2 rounded text-[9px] bg-neutral-900 text-neutral-400 border border-neutral-700">GUEST</span>`
+                }
+              </div>
+              <p class="text-[11px] text-neutral-400 mt-0.5">
+                ${
+                  user
+                    ? `Changes sync automatically to Firestore. ${syncState.lastSyncedAt ? `Last saved at ${syncState.lastSyncedAt}` : ''}`
+                    : 'Sign in to access your custom tasks, streak, and syllabus from any phone or computer.'
+                }
+              </p>
             </div>
           </div>
 
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 shrink-0">
             ${
               user
                 ? `
               <button
-                id="settings-sync-now-btn"
-                ${syncState.syncStatus === 'syncing' ? 'disabled' : ''}
-                class="px-3 py-1.5 bg-white text-black font-semibold rounded hover:bg-neutral-200 transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                id="settings-firestore-save-btn"
+                class="px-3.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white border border-neutral-700 rounded transition-colors flex items-center gap-1.5 cursor-pointer"
               >
-                ${icon(
-                  'refreshCw',
-                  `w-3.5 h-3.5 ${syncState.syncStatus === 'syncing' ? 'animate-spin' : ''}`
-                )}
-                <span>Sync Now</span>
+                ${icon('uploadCloud', 'w-3.5 h-3.5')}
+                <span>Force Cloud Save</span>
               </button>
               <button
-                id="settings-sign-out-btn"
-                class="p-1.5 text-neutral-400 hover:text-white border border-neutral-800 rounded cursor-pointer"
-                title="Sign out"
+                id="settings-signout-btn"
+                class="px-3 py-1.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800 rounded transition-colors flex items-center gap-1 cursor-pointer"
               >
                 ${icon('logOut', 'w-3.5 h-3.5')}
+                <span>Sign Out</span>
               </button>
             `
                 : `
-              <button id="settings-google-signin-btn" class="gsi-material-button">
-                <div class="gsi-material-button-state"></div>
-                <div class="gsi-material-button-content-wrapper">
-                  <div class="gsi-material-button-icon">
-                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style="display: block;">
-                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                      <path fill="none" d="M0 0h48v48H0z"></path>
-                    </svg>
-                  </div>
-                  <span class="gsi-material-button-contents">Sign in with Google</span>
-                </div>
+              <button
+                id="settings-auth-open-btn"
+                class="px-4 py-2 bg-white hover:bg-neutral-200 text-black font-semibold rounded transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                ${icon('user', 'w-3.5 h-3.5')}
+                <span>Sign In or Register</span>
               </button>
             `
             }
           </div>
         </div>
+      </div>
 
+      <!-- 3. Manage Tasks & Custom Schedule Section -->
+      <div class="bg-[#151515] border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800 pb-3 gap-3">
+          <div>
+            <div class="flex items-center gap-2.5">
+              ${icon('calendar', 'w-4 h-4 text-white')}
+              <h2 class="text-sm font-mono uppercase tracking-wider font-semibold text-white">
+                Manage Custom Study Tasks (${customTasks.length})
+              </h2>
+            </div>
+            <p class="text-xs text-neutral-400 mt-0.5">
+              Customize, reorder, or clear tasks for any study day.
+            </p>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <button
+              id="settings-add-task-btn"
+              class="px-3.5 py-1.5 text-xs font-mono font-semibold text-black bg-white hover:bg-neutral-200 rounded transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+            >
+              ${icon('plus', 'w-3.5 h-3.5')}
+              <span>+ Add Task</span>
+            </button>
+            <button
+              id="settings-seed-today-btn"
+              class="px-3 py-1.5 text-xs font-mono font-medium text-neutral-200 bg-neutral-900 border border-neutral-700 hover:border-neutral-500 rounded transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              ${icon('zap', 'w-3 h-3 text-amber-400')}
+              <span>Seed Template Schedule</span>
+            </button>
+            ${
+              customTasks.length > 0
+                ? `
+              <button
+                id="settings-clear-all-tasks-btn"
+                class="px-2.5 py-1.5 text-xs font-mono text-neutral-400 hover:text-rose-300 bg-neutral-900 border border-neutral-800 hover:border-rose-800 rounded transition-colors cursor-pointer"
+                title="Clear all custom tasks"
+              >
+                ${icon('trash2', 'w-3.5 h-3.5')}
+              </button>
+            `
+                : ''
+            }
+          </div>
+        </div>
+
+        <!-- Filter bar -->
         ${
-          syncState.errorMessage
-            ? `<div class="p-3 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-200 font-mono">
-                Error: ${syncState.errorMessage}
-              </div>`
+          uniqueSubjects.length > 0
+            ? `
+          <div class="flex items-center gap-2 overflow-x-auto pb-1 text-xs font-mono">
+            <span class="text-neutral-500 shrink-0">Filter Subject:</span>
+            <button
+              data-subject="all"
+              class="settings-filter-subj-btn px-2.5 py-1 rounded border transition-colors cursor-pointer ${
+                taskFilterSubject === 'all'
+                  ? 'bg-neutral-800 text-white border-neutral-600 font-semibold'
+                  : 'bg-[#0B0B0B] text-neutral-400 border-neutral-800 hover:text-white'
+              }"
+            >
+              All (${customTasks.length})
+            </button>
+            ${uniqueSubjects
+              .map(
+                (subj) => `
+              <button
+                data-subject="${subj}"
+                class="settings-filter-subj-btn px-2.5 py-1 rounded border transition-colors cursor-pointer truncate max-w-[150px] ${
+                  taskFilterSubject === subj
+                    ? 'bg-neutral-800 text-white border-neutral-600 font-semibold'
+                    : 'bg-[#0B0B0B] text-neutral-400 border-neutral-800 hover:text-white'
+                }"
+              >
+                ${subj.split(' ')[0]}
+              </button>
+            `
+              )
+              .join('')}
+          </div>
+        `
             : ''
         }
 
-        <!-- Spreadsheet Link Form -->
-        <form id="settings-sheet-form" class="space-y-2">
-          <label class="block text-xs font-mono uppercase text-neutral-400">
-            Connected Spreadsheet ID or URL
-          </label>
-          <div class="flex gap-2">
-            <input
-              type="text"
-              id="settings-sheet-input"
-              value="${syncState.spreadsheetId}"
-              placeholder="Google Spreadsheet ID or URL"
-              class="flex-1 bg-[#0B0B0B] border border-neutral-800 rounded px-3 py-2 text-xs text-white font-mono focus:border-neutral-600 focus:outline-none"
-            />
-            <button
-              type="submit"
-              class="px-4 py-2 text-xs font-mono uppercase font-semibold text-black bg-white hover:bg-neutral-200 rounded transition-colors cursor-pointer"
-            >
-              Update ID
-            </button>
+        <!-- Task Table / List -->
+        ${
+          filteredTasks.length === 0
+            ? `
+          <div class="p-8 text-center bg-[#0B0B0B] border border-dashed border-neutral-800 rounded-lg text-neutral-400 text-xs">
+            No study tasks created yet. Click "+ Add Task" or "Seed Template Schedule" to start planning!
           </div>
-          ${
-            saveSuccessMsg
-              ? `<p class="text-xs font-mono text-neutral-300">${saveSuccessMsg}</p>`
-              : ''
-          }
-          <p class="text-[11px] text-neutral-500">
-            Default Workbook ID: <code class="text-neutral-400 font-mono">1x_nnfVAKcBEwqlX8VK5KHNQQzs5y45KB64JvPGqW47A</code>.
-            Organized into <code class="text-neutral-400 font-mono">Settings</code>, <code class="text-neutral-400 font-mono">TheoryTopics</code>, <code class="text-neutral-400 font-mono">LabTopics</code>, and <code class="text-neutral-400 font-mono">TaskCompletions</code>.
-          </p>
-        </form>
+        `
+            : `
+          <div class="space-y-2 max-h-96 overflow-y-auto pr-1">
+            ${filteredTasks
+              .map((task) => {
+                const isDone = Boolean(task.isCompleted);
+                return `
+                <div class="p-3 bg-[#0B0B0B] border border-neutral-800 hover:border-neutral-700 rounded-lg flex items-center justify-between gap-3 text-xs">
+                  <div class="flex items-center gap-3 min-w-0 flex-1">
+                    <button
+                      data-task-id="${task.id}"
+                      class="settings-task-toggle-btn text-neutral-400 hover:text-white cursor-pointer shrink-0"
+                    >
+                      ${
+                        isDone
+                          ? icon('checkSquare', 'w-4 h-4 text-emerald-400')
+                          : icon('square', 'w-4 h-4')
+                      }
+                    </button>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2">
+                        <span class="font-mono text-neutral-400 font-semibold text-[11px]">${task.date}</span>
+                        <span class="text-neutral-500 font-mono text-[10px]">&bull; ${task.timeSlot}</span>
+                        <span class="px-1.5 py-0.2 rounded text-[9px] font-mono border ${
+                          task.priority === 'High'
+                            ? 'bg-rose-950/40 text-rose-300 border-rose-800/60'
+                            : 'bg-neutral-900 text-neutral-400 border-neutral-700'
+                        }">
+                          ${task.priority}
+                        </span>
+                      </div>
+                      <p class="font-medium text-white truncate mt-0.5 ${isDone ? 'line-through text-neutral-500' : ''}">
+                        ${task.title}
+                      </p>
+                      <span class="text-[10px] text-neutral-500 font-mono">${task.subject}</span>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    <button
+                      data-edit-id="${task.id}"
+                      class="settings-task-edit-btn p-1.5 text-neutral-400 hover:text-white rounded hover:bg-neutral-800 transition-colors cursor-pointer"
+                      title="Edit Task"
+                    >
+                      ${icon('edit', 'w-3.5 h-3.5')}
+                    </button>
+                    <button
+                      data-delete-id="${task.id}"
+                      class="settings-task-delete-btn p-1.5 text-neutral-500 hover:text-rose-400 rounded hover:bg-rose-950/30 transition-colors cursor-pointer"
+                      title="Delete Task"
+                    >
+                      ${icon('trash2', 'w-3.5 h-3.5')}
+                    </button>
+                  </div>
+                </div>
+              `;
+              })
+              .join('')}
+          </div>
+        `
+        }
       </div>
 
-      <!-- 3. Configurable Exam Dates -->
+      <!-- 4. Academic Exam Schedule Configurator -->
       <div class="bg-[#151515] border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4">
         <div class="flex items-center gap-2.5 border-b border-neutral-800 pb-3">
           ${icon('calendar', 'w-4 h-4 text-white')}
           <h2 class="text-sm font-mono uppercase tracking-wider font-semibold text-white">
-            Semester Examination Dates
+            Semester Exam Dates
           </h2>
         </div>
 
-        <!-- Study Leave Start -->
-        <div class="max-w-md">
-          <label class="block text-xs font-mono uppercase text-neutral-400 mb-1">
-            Study Leave Commencement
+        <!-- Study Leave Start Date -->
+        <div>
+          <label class="block text-xs font-mono font-medium text-neutral-300 uppercase tracking-wider mb-1.5">
+            Study Leave Start Date
           </label>
           <input
             type="date"
@@ -206,7 +306,7 @@ export function renderSettingsView(container, state, actions) {
         <!-- Theory Exam Dates -->
         <div class="pt-2">
           <span class="text-xs font-mono uppercase text-neutral-500 block mb-2">
-            Theory Exams (Configurable):
+            Theory Exams:
           </span>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -262,7 +362,7 @@ export function renderSettingsView(container, state, actions) {
         <!-- Lab Practical Dates -->
         <div class="pt-2">
           <span class="text-xs font-mono uppercase text-neutral-500 block mb-2">
-            Lab Practical Exams (Editable):
+            Lab Practical Exams:
           </span>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -292,12 +392,12 @@ export function renderSettingsView(container, state, actions) {
         </div>
       </div>
 
-      <!-- 4. Timetable Presets Reference Viewer -->
+      <!-- 5. Timetable Presets Reference Viewer -->
       <div class="bg-[#151515] border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4">
         <div class="flex items-center gap-2.5 border-b border-neutral-800 pb-3">
           ${icon('clock', 'w-4 h-4 text-white')}
           <h2 class="text-sm font-mono uppercase tracking-wider font-semibold text-white">
-            Daily Timetable Reference
+            Daily Timetable Reference Templates
           </h2>
         </div>
 
@@ -348,7 +448,7 @@ export function renderSettingsView(container, state, actions) {
                   ${item.activity}
                 </span>
               </div>
-              <span class="text-[10px] font-mono uppercase text-neutral-500 shrink-0">
+              <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400 shrink-0">
                 ${item.category}
               </span>
             </div>
@@ -358,57 +458,55 @@ export function renderSettingsView(container, state, actions) {
         </div>
       </div>
 
-      <!-- 5. Data Management & Excel Tools -->
+      <!-- 6. Excel & JSON Data Management Card -->
       <div class="bg-[#151515] border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4">
         <div class="flex items-center gap-2.5 border-b border-neutral-800 pb-3">
-          ${icon('sliders', 'w-4 h-4 text-white')}
+          ${icon('fileSpreadsheet', 'w-4 h-4 text-emerald-400')}
           <h2 class="text-sm font-mono uppercase tracking-wider font-semibold text-white">
-            Data Tools & Excel (.xlsx) Operations
+            Excel & Local Data Backup
           </h2>
         </div>
 
-        <!-- Excel Section Banner -->
-        <div class="p-3.5 bg-[#0B0B0B] border border-emerald-900/40 rounded flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
-          <div class="flex items-center gap-2.5">
-            ${icon('fileSpreadsheet', 'w-5 h-5 text-emerald-400 shrink-0')}
-            <div>
-              <span class="text-emerald-400 font-semibold block uppercase text-[11px]">
-                Excel Spreadsheet Mode
-              </span>
-              <span class="text-neutral-400 text-xs">
-                Download or upload your complete syllabus as an .xlsx workbook with Theory, Lab, Schedule, and Exam tabs.
-              </span>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Excel Export -->
+          <div class="p-4 bg-[#0B0B0B] border border-neutral-800 rounded-lg space-y-2">
+            <div class="flex items-center gap-2 text-white font-medium text-xs">
+              ${icon('download', 'w-4 h-4 text-emerald-400')}
+              <span>Download Excel (.xlsx)</span>
             </div>
-          </div>
-
-          <div class="flex items-center gap-2 flex-wrap">
-            <input type="file" id="settings-excel-file-input" accept=".xlsx, .xls, .csv" class="hidden" />
-            <button
-              id="settings-import-excel-btn"
-              class="px-3 py-1.5 text-xs font-mono font-medium text-white bg-neutral-900 border border-neutral-700 hover:border-neutral-500 rounded transition-colors flex items-center gap-1.5 cursor-pointer"
-            >
-              ${icon('upload', 'w-3.5 h-3.5 text-emerald-400')}
-              <span>Import .xlsx</span>
-            </button>
+            <p class="text-[11px] text-neutral-400">
+              Export all theory syllabus, lab programs, custom tasks, and exam dates into a formatted multi-sheet Excel workbook.
+            </p>
             <button
               id="settings-export-excel-btn"
-              class="px-3.5 py-1.5 text-xs font-mono font-semibold text-black bg-emerald-400 hover:bg-emerald-300 rounded transition-colors flex items-center gap-1.5 cursor-pointer"
+              class="w-full mt-2 py-2 px-3 text-xs font-mono font-medium text-black bg-emerald-400 hover:bg-emerald-300 rounded transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
             >
-              ${icon('download', 'w-3.5 h-3.5 text-black')}
-              <span>Download .xlsx</span>
+              ${icon('fileSpreadsheet', 'w-3.5 h-3.5')}
+              <span>Export Full Excel Plan</span>
+            </button>
+          </div>
+
+          <!-- Excel Import -->
+          <div class="p-4 bg-[#0B0B0B] border border-neutral-800 rounded-lg space-y-2">
+            <div class="flex items-center gap-2 text-white font-medium text-xs">
+              ${icon('upload', 'w-4 h-4 text-cyan-400')}
+              <span>Import Excel (.xlsx)</span>
+            </div>
+            <p class="text-[11px] text-neutral-400">
+              Upload your syllabus or revised task schedule from a valid .xlsx file.
+            </p>
+            <input type="file" id="settings-excel-file-input" accept=".xlsx,.xls" class="hidden" />
+            <button
+              id="settings-import-excel-btn"
+              class="w-full mt-2 py-2 px-3 text-xs font-mono font-medium text-white bg-neutral-900 border border-neutral-700 hover:border-neutral-500 rounded transition-colors cursor-pointer flex items-center justify-center gap-2"
+            >
+              ${icon('upload', 'w-3.5 h-3.5')}
+              <span>Upload Excel File</span>
             </button>
           </div>
         </div>
 
         <div class="flex flex-col sm:flex-row items-center gap-3 pt-2">
-          <button
-            id="settings-reset-checks-btn"
-            class="w-full sm:w-auto px-4 py-2 text-xs font-mono uppercase font-medium text-neutral-300 hover:text-white bg-[#0B0B0B] border border-neutral-800 hover:border-neutral-700 rounded transition-colors flex items-center justify-center gap-2 cursor-pointer"
-          >
-            ${icon('rotateCcw', 'w-3.5 h-3.5')}
-            <span>Reset Today's Checkmarks</span>
-          </button>
-
           <button
             id="settings-export-json-btn"
             class="w-full sm:w-auto px-4 py-2 text-xs font-mono uppercase font-medium text-white bg-[#0B0B0B] border border-neutral-800 hover:border-neutral-700 rounded transition-colors flex items-center justify-center gap-2 cursor-pointer"
@@ -419,32 +517,82 @@ export function renderSettingsView(container, state, actions) {
         </div>
       </div>
     </div>
-
   `;
 
   // Attach Event Handlers
-  container.querySelector('#settings-sync-now-btn')?.addEventListener('click', () => {
-    actions.syncWithSheets();
+  container.querySelector('#settings-auth-open-btn')?.addEventListener('click', () => {
+    actions.openAuthModal('login');
   });
 
-  container.querySelector('#settings-sign-out-btn')?.addEventListener('click', () => {
+  container.querySelector('#settings-firestore-save-btn')?.addEventListener('click', () => {
+    actions.saveToFirestore();
+  });
+
+  container.querySelector('#settings-signout-btn')?.addEventListener('click', () => {
     actions.signOutUser();
   });
 
-  container.querySelector('#settings-google-signin-btn')?.addEventListener('click', () => {
-    actions.signInWithGoogle();
+  // Add Task
+  container.querySelector('#settings-add-task-btn')?.addEventListener('click', () => {
+    actions.openAddTaskModal(null, todayStr);
   });
 
-  // Update Sheet Form
-  container.querySelector('#settings-sheet-form')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const val = container.querySelector('#settings-sheet-input')?.value || '';
-    actions.setCustomSpreadsheetId(val);
-    saveSuccessMsg = 'Spreadsheet ID updated. Click "Sync Now" to connect.';
-    renderSettingsView(container, state, actions);
-    setTimeout(() => {
-      saveSuccessMsg = '';
-    }, 4000);
+  container.querySelector('#settings-seed-today-btn')?.addEventListener('click', () => {
+    actions.seedRecommendedSchedule(todayStr);
+  });
+
+  container.querySelector('#settings-clear-all-tasks-btn')?.addEventListener('click', () => {
+    actions.showConfirmDialog({
+      title: 'Clear All Custom Tasks?',
+      message: 'This will remove all custom study tasks from all dates. Your theory and lab syllabus topics will remain safe.',
+      confirmLabel: 'Clear All Tasks',
+      isDestructive: true,
+      onConfirm: () => {
+        actions.clearDayTasks(null); // clears all
+      },
+    });
+  });
+
+  // Filter subject buttons
+  container.querySelectorAll('.settings-filter-subj-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      taskFilterSubject = btn.getAttribute('data-subject') || 'all';
+      renderSettingsView(container, state, actions);
+    });
+  });
+
+  // Task item checkboxes
+  container.querySelectorAll('.settings-task-toggle-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-task-id');
+      if (id) actions.toggleCustomTask(id);
+    });
+  });
+
+  // Task item edit
+  container.querySelectorAll('.settings-task-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-edit-id');
+      const task = customTasks.find((t) => t.id === id);
+      if (task) actions.openAddTaskModal(task, task.date);
+    });
+  });
+
+  // Task item delete
+  container.querySelectorAll('.settings-task-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-delete-id');
+      const task = customTasks.find((t) => t.id === id);
+      if (task) {
+        actions.showConfirmDialog({
+          title: 'Delete Task',
+          message: `Are you sure you want to delete "${task.title}"?`,
+          confirmLabel: 'Delete',
+          isDestructive: true,
+          onConfirm: () => actions.deleteCustomTask(id),
+        });
+      }
+    });
   });
 
   // Date changes
@@ -504,20 +652,6 @@ export function renderSettingsView(container, state, actions) {
     });
   });
 
-  // Reset checks
-  container.querySelector('#settings-reset-checks-btn')?.addEventListener('click', () => {
-    actions.showConfirmDialog({
-      title: "Reset Today's Checkmarks?",
-      message:
-        "This will clear all daily timetable checkmarks for today without deleting any topics or exam dates.",
-      confirmLabel: 'Reset',
-      isDestructive: true,
-      onConfirm: () => {
-        actions.resetDaySchedule(todayStr);
-      },
-    });
-  });
-
   // Excel .xlsx Operations
   const excelFileInput = container.querySelector('#settings-excel-file-input');
   container.querySelector('#settings-import-excel-btn')?.addEventListener('click', () => {
@@ -544,13 +678,14 @@ export function renderSettingsView(container, state, actions) {
       examDates,
       theoryTopics,
       labTopics,
+      customTasks,
       dailyCompletions,
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mca_study_backup_${todayStr}.json`;
+    a.download = `study_tracker_backup_${todayStr}.json`;
     a.click();
     URL.revokeObjectURL(url);
   });
