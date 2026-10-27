@@ -22,6 +22,8 @@ import {
   extractSpreadsheetId,
 } from './services/googleSheets.js';
 import { exportToExcel, importFromExcel } from './services/excelService.js';
+import { calculateGamification } from './services/gamificationService.js';
+import { showToast } from './utils/toast.js';
 
 const LOCAL_STORAGE_KEY = 'mca_study_planner_state_v1';
 
@@ -229,6 +231,14 @@ class StudyStore {
       percentage: dsTotal > 0 ? Math.round((dsCompleted / dsTotal) * 100) : 0,
     };
 
+    const gamification = calculateGamification({
+      ...state,
+      dailyScheduleProgress,
+      theoryProgress,
+      madLabProgress,
+      dsLabProgress,
+    });
+
     return {
       ...state,
       activePhase,
@@ -237,6 +247,7 @@ class StudyStore {
       theoryProgress,
       madLabProgress,
       dsLabProgress,
+      gamification,
     };
   }
 
@@ -286,15 +297,21 @@ class StudyStore {
 
   toggleScheduleItem(date, itemId) {
     const existing = this.state.dailyCompletions[date]?.completedScheduleIds || [];
-    const updatedIds = existing.includes(itemId)
-      ? existing.filter((id) => id !== itemId)
-      : [...existing, itemId];
+    const isAdding = !existing.includes(itemId);
+    const updatedIds = isAdding
+      ? [...existing, itemId]
+      : existing.filter((id) => id !== itemId);
 
     this.state.dailyCompletions[date] = {
       date,
       completedScheduleIds: updatedIds,
       lastUpdated: new Date().toISOString(),
     };
+
+    if (isAdding) {
+      showToast('<span class="font-bold text-amber-400 font-mono">+15 XP</span> Daily task block completed! 🔥', 'xp');
+    }
+
     this.triggerAutoSync();
     this.notify();
   }
@@ -322,9 +339,18 @@ class StudyStore {
   }
 
   updateTheoryTopic(id, updates) {
+    let newlyDone = false;
+    let isEarly = false;
     this.state.theoryTopics = this.state.theoryTopics.map((t) => {
       if (t.id === id) {
         const isDone = updates.status === 'Done';
+        if (isDone && t.status !== 'Done') {
+          newlyDone = true;
+          if (t.targetDate) {
+            const todayStr = getTodayKolkata();
+            if (todayStr <= t.targetDate) isEarly = true;
+          }
+        }
         return {
           ...t,
           ...updates,
@@ -333,6 +359,15 @@ class StudyStore {
       }
       return t;
     });
+
+    if (newlyDone) {
+      if (isEarly) {
+        showToast('<span class="font-bold text-emerald-400 font-mono">+75 XP!</span> Theory topic completed with <span class="text-amber-300 font-semibold">+25 Early Bonus 🎯</span>', 'bonus');
+      } else {
+        showToast('<span class="font-bold text-emerald-400 font-mono">+50 XP</span> Theory topic completed! 📚', 'xp');
+      }
+    }
+
     this.triggerAutoSync();
     this.notify();
   }
@@ -378,9 +413,18 @@ class StudyStore {
   }
 
   updateLabTopic(id, updates) {
+    let newlyDone = false;
+    let isEarly = false;
     this.state.labTopics = this.state.labTopics.map((l) => {
       if (l.id === id) {
         const isDone = updates.status === 'Done';
+        if (isDone && l.status !== 'Done') {
+          newlyDone = true;
+          if (l.targetDate) {
+            const todayStr = getTodayKolkata();
+            if (todayStr <= l.targetDate) isEarly = true;
+          }
+        }
         return {
           ...l,
           ...updates,
@@ -389,6 +433,15 @@ class StudyStore {
       }
       return l;
     });
+
+    if (newlyDone) {
+      if (isEarly) {
+        showToast('<span class="font-bold text-cyan-400 font-mono">+60 XP!</span> Lab exercise completed with <span class="text-amber-300 font-semibold">+20 Early Bonus 🎯</span>', 'bonus');
+      } else {
+        showToast('<span class="font-bold text-cyan-400 font-mono">+40 XP</span> Lab exercise completed! 🔬', 'xp');
+      }
+    }
+
     this.triggerAutoSync();
     this.notify();
   }

@@ -22,6 +22,7 @@ export function renderDashboardView(container, state, actions) {
     dsLabProgress,
     theoryTopics,
     labTopics,
+    gamification,
   } = state;
 
   const todayStr = getTodayKolkata();
@@ -119,6 +120,93 @@ export function renderDashboardView(container, state, actions) {
             : ''
         }
       </div>
+
+      <!-- Gamification & Calendar Quick Hub -->
+      ${
+        gamification
+          ? `
+      <div class="bg-[#151515] border border-neutral-800 rounded-lg p-5 shadow-sm">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-800 pb-4 mb-4">
+          <div class="flex items-center gap-3">
+            <div class="p-2.5 rounded-lg bg-orange-950/60 border border-orange-800/80 text-orange-400">
+              ${icon('flame', 'w-5 h-5 fill-orange-400/20')}
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-mono uppercase tracking-wider text-neutral-400">Study Streak & Level</span>
+                <span class="px-1.5 py-0.2 rounded text-[10px] font-mono bg-white text-black font-bold">LVL ${gamification.level.level}</span>
+              </div>
+              <h2 class="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                <span>${gamification.level.title}</span>
+                <span class="text-xs font-mono text-amber-400 font-semibold">&bull; ${gamification.xp.toLocaleString()} XP</span>
+              </h2>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <button
+              id="dash-open-calendar-btn"
+              class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-medium text-white bg-neutral-900 border border-neutral-700 hover:border-neutral-500 rounded transition-colors cursor-pointer"
+            >
+              ${icon('calendar', 'w-3.5 h-3.5 text-neutral-300')}
+              <span>Open Calendar View &rarr;</span>
+            </button>
+            <button
+              id="dash-view-badges-btn"
+              class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-semibold text-black bg-white hover:bg-neutral-200 rounded transition-colors cursor-pointer"
+            >
+              ${icon('trophy', 'w-3.5 h-3.5')}
+              <span>Badges (${gamification.unlockedBadgeCount}/${gamification.totalBadges})</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <!-- Streak Card -->
+          <div class="p-3.5 bg-[#0B0B0B] border border-neutral-800 rounded-md flex items-center justify-between">
+            <div>
+              <span class="text-[11px] font-mono text-neutral-400 uppercase block">Active Streak</span>
+              <div class="text-xl font-bold font-mono text-orange-400 flex items-center gap-1.5 mt-0.5">
+                ${icon('flame', 'w-5 h-5 fill-orange-400/20')}
+                <span>${gamification.streak} Days</span>
+              </div>
+              <span class="text-[10px] text-neutral-500 font-mono mt-0.5 block">
+                ${gamification.activeToday ? 'Active today! Keep it going.' : 'Complete 1 task today to continue.'}
+              </span>
+            </div>
+            <div class="text-right">
+              <span class="text-[10px] font-mono text-neutral-500 uppercase block">Best Record</span>
+              <span class="text-xs font-mono font-bold text-white">${gamification.longestStreak} Days</span>
+            </div>
+          </div>
+
+          <!-- XP to Next Level Card -->
+          <div class="p-3.5 bg-[#0B0B0B] border border-neutral-800 rounded-md col-span-1 sm:col-span-2 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between text-xs font-mono mb-1.5">
+                <span class="text-neutral-400">Progress to Next Rank</span>
+                <span class="text-amber-300 font-bold font-mono">
+                  ${gamification.level.remainingXpToNext > 0 ? `${gamification.level.remainingXpToNext} XP needed` : 'Max Rank'}
+                </span>
+              </div>
+              <div class="w-full bg-neutral-900 rounded-full h-2 overflow-hidden border border-neutral-800">
+                <div
+                  class="bg-gradient-to-r from-amber-500 to-emerald-400 h-2 rounded-full transition-all duration-500"
+                  style="width: ${gamification.level.progressPercent}%"
+                ></div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-2 text-[10px] font-mono text-neutral-500">
+              <span>+50 XP Theory Topic &bull; +40 XP Lab Topic &bull; +15 XP Schedule Block</span>
+              <span class="text-amber-400 font-semibold">+25 XP Early Bird Bonus</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      `
+          : ''
+      }
 
       <!-- 2. Phase Control Toggles Panel -->
       <div class="bg-[#151515] border border-neutral-800 rounded-lg p-5">

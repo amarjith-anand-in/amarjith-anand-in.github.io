@@ -3,12 +3,13 @@ import { getCurrentTimeKolkata } from '../utils/dateUtils.js';
 
 let clockInterval = null;
 
-export function renderNavbar(container, state, onNavigate, onSync, onExportExcel) {
-  const { activeTab, activePhase, syncState } = state;
+export function renderNavbar(container, state, onNavigate, onSync, onExportExcel, onOpenBadges) {
+  const { activeTab, activePhase, syncState, gamification } = state;
   const currentTime = getCurrentTimeKolkata();
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', iconName: 'layoutDashboard' },
+    { id: 'calendar', label: 'Calendar', iconName: 'calendar' },
     { id: 'theory', label: 'Theory Planner', iconName: 'bookOpen' },
     { id: 'lab', label: 'Lab Planner', iconName: 'flaskConical' },
     { id: 'excel', label: 'Excel Sheet', iconName: 'fileSpreadsheet' },
@@ -90,8 +91,33 @@ export function renderNavbar(container, state, onNavigate, onSync, onExportExcel
               .join('')}
           </nav>
 
-          <!-- Right: Clock, Quick Excel Export & Google Sheets Sync Status -->
+          <!-- Right: Streak & XP Badge, Clock, Quick Excel Export & Sheets Sync -->
           <div class="flex items-center gap-2 shrink-0">
+            <!-- Gamification Streak & XP Badge -->
+            ${
+              gamification
+                ? `
+              <button
+                id="nav-gamification-btn"
+                title="Study Streak: ${gamification.streak} days (Record: ${gamification.longestStreak} days) &bull; Level ${gamification.level.level}: ${gamification.level.title}. Click to view achievements!"
+                class="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-medium bg-gradient-to-r from-neutral-900 to-[#191919] hover:from-neutral-800 hover:to-neutral-700 border border-neutral-700/80 text-white transition-all cursor-pointer shadow-sm"
+              >
+                <span class="text-orange-400 flex items-center gap-1 font-bold">
+                  ${icon('flame', 'w-3.5 h-3.5 fill-orange-400/20')}
+                  <span>${gamification.streak}d</span>
+                </span>
+                <span class="text-neutral-600 hidden sm:inline">&bull;</span>
+                <span class="text-amber-300 font-bold hidden sm:inline">
+                  ${gamification.xp} XP
+                </span>
+                <span class="hidden xl:inline text-[9px] font-sans px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-300 border border-neutral-700">
+                  Lvl ${gamification.level.level}
+                </span>
+              </button>
+            `
+                : ''
+            }
+
             <!-- Quick Excel Export button -->
             <button
               id="nav-quick-excel-btn"
@@ -137,14 +163,14 @@ export function renderNavbar(container, state, onNavigate, onSync, onExportExcel
 
     <!-- Mobile Bottom Navigation Bar -->
     <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0E0E0E] border-t border-neutral-800/90 pb-safe">
-      <div class="grid grid-cols-5 h-16">
+      <div class="grid grid-cols-6 h-16">
         ${navItems
           .map((item) => {
             const isActive = activeTab === item.id;
             return `
               <button
                 data-tab="${item.id}"
-                class="mobile-nav-btn flex flex-col items-center justify-center gap-1 py-1 transition-colors cursor-pointer ${
+                class="mobile-nav-btn flex flex-col items-center justify-center gap-0.5 py-1 transition-colors cursor-pointer ${
                   isActive ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'
                 }"
               >
@@ -153,7 +179,7 @@ export function renderNavbar(container, state, onNavigate, onSync, onExportExcel
                 }">
                   ${icon(item.iconName, 'w-4 h-4')}
                 </div>
-                <span class="text-[9px] uppercase font-mono tracking-wider truncate max-w-[60px]">
+                <span class="text-[8.5px] uppercase font-mono tracking-tighter truncate max-w-[54px]">
                   ${item.label.split(' ')[0]}
                 </span>
               </button>
@@ -171,6 +197,11 @@ export function renderNavbar(container, state, onNavigate, onSync, onExportExcel
       if (tab) onNavigate(tab);
     });
   });
+
+  const gamificationBtn = container.querySelector('#nav-gamification-btn');
+  if (gamificationBtn) {
+    gamificationBtn.addEventListener('click', () => onOpenBadges && onOpenBadges());
+  }
 
   const brandBtn = container.querySelector('#nav-brand-btn');
   if (brandBtn) {
