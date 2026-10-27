@@ -1,0 +1,8 @@
+{
+  "name": "Personal Study Tracker ",
+  "description": "Personal Study Tracker for Me",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
